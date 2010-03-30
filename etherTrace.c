@@ -23,65 +23,61 @@
 #include <pcap.h>
 #include <arpa/inet.h>
 
-
-
 #define MAX_ETH_FRAME_LEN xxx  // maximum Ethernet frame length
+int count = 0;
+void printARP(const u_char *p) {
 
-void printOther(pcap_t * p) {
-
-	struct pcap_pkthdr * hdr = (struct pcap_pkthdr *) p;
-	struct timeval t = hdr->ts;
-	time_t tv = (time_t) t.tv_sec;
-
-	printf("==== packet count ====\n");
-	printf("captured time %s\n", ctime(&tv));
-	printf("bytes captured %d\n", ntohs(hdr->len));
-	printf("length of packet %d\n",ntohs(hdr->len));
-	printf("Ethernet type 0x%02X not IP, not processed.\n\n", ntohs( ((struct ether_header *) p)->ether_type));
-
+	struct arphdr * hdr = (struct arphdr *) (p + 0);
+	unsigned short int op = hdr->ar_op;
+	
+	if( op == ARPOP_REQUEST)
+		printf("ARP request\n");
+	else if(op == ARPOP_REPLY)
+		printf("ARP reply\n");
+	else {
+		printf("ARP Unknown\n");
+	}
 }
 
-void printEthernet(const u_char* packet) {
-
-	struct iphdr * hdr = (struct iphdr *) packet;
-	struct ip * p = (struct ip *) packet;
-
-	struct ether_header * eptr = (struct ether_header *) packet;
-
-
-	printf("==== packet count ====\n");
-	//printf("captured time %s\n", ctime(&tv));
-	printf("bytes captured %d\n", ntohs(p->ip_len));
-	printf("length of packet %d\n",ntohs(p->ip_len));
-	printf("IP packet length %d\n", ntohs(p->ip_len));
-
+void printEthernetHeader(struct ether_header * eptr) {
 	printf("dst addr = %s\n", ether_ntoa((const struct ether_addr *) &eptr->ether_dhost));
 	printf("src addr = %s\n", ether_ntoa((const struct ether_addr *) &eptr->ether_shost));
+}
 
-	printf("type = 0x%02X\n", ntohs( ((struct ether_header *) packet) -> ether_type) );
-
+void printEthernetBody(struct ip * p) {
+	printf("IP packet length %d\n", p->ip_len);
 	printf("src IP addr = %s\n", inet_ntoa(p->ip_src));
 	printf("dest IP addr = %s\n", inet_ntoa(p->ip_dst));
+}
 
-	printf("\n");
-
+void printEthernet(const u_char * packet) {
+	printEthernetHeader((struct ether_header *) (packet + 0));
+	printEthernetBody((struct ip*) (packet + sizeof(struct ether_header)));
 }
 
 void processPacket(u_char *args, const struct pcap_pkthdr* pkthdr, const u_char* packet) {
 
 	u_int16_t type = ntohs( ((struct ether_header *) packet)->ether_type);
+	
+	printf("==== packet count %d ====\n", count);
+	time_t tv = (pkthdr->ts).tv_sec;
+	printf("captured time %s", ctime(&tv));
+	printf("bytes captured %d\n", pkthdr->len);
+	printf("length of packet %d\n",pkthdr->len);
+	printf("type = 0x%02X\n", type);
 
 	if(type == ETHERTYPE_IP) {
 		printEthernet(packet);
-	} else {
-		printOther((pcap_t *) packet);
-	}	
-	// else if(type == ETHERTYPE_ARP) {
-
-	//}else if(type == ETHERTYPE_REVARP) {
-
-	//}
-
+	}		
+	 else if(type == ETHERTYPE_ARP) {
+		printARP(packet);	  
+	}else if(type == ETHERTYPE_REVARP) {
+	  printf("REARP Packet\n");
+	}else {
+		printf("Ethernet type 0x%02X not IP, not processed.\n\n", type);
+	}
+	count++;
+	printf("\n");
 }
 
 int main(int argc, char* argv[]){
@@ -91,35 +87,19 @@ int main(int argc, char* argv[]){
 		exit(1);
 	}
 
-	/* define local variables */
-
 	pcap_t *p;
 	char errbuf[PCAP_ERRBUF_SIZE];
 
 	p = pcap_open_offline(argv[1], errbuf);
 
-	/* process file header */
-
 	printf("==== GLOBAL HEADER ====\n");
 	printf("host order is %s \n", pcap_is_swapped(p) ? "in order" : "out of order" );
 	printf("major version %d\n", pcap_major_version(p));
 	printf("minor version %d\n", pcap_minor_version(p));
-	//printf("maximum captured packet length %ld\n", pcap_  snaplen);
-	printf("link layer type %d\n", pcap_datalink(p));
+	printf("maximum captured packet length %d\n", pcap_snapshot(p));
+	printf("link layer type %d\n\n", pcap_datalink(p));
 
-	/*
-	 * while there are tuples to read
-	 *     read one frame header
-	 *     read corresponding frame
-	 *     extract Ethernet addresses, IP addresses and protocol type
-	 *     print information extracted
-	 * end-while
-	 *
-	 */
-
-	u_char* args = NULL;
-
-	pcap_loop(p, 1000, processPacket, args);
+	pcap_loop(p, 1000, processPacket, NULL);
 
 	pcap_close(p);
 	return 1;
