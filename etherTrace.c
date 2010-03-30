@@ -15,15 +15,77 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <net/if.h>
-#include <netinet/in.h>
 #include <netinet/if_ether.h>
+#include <netinet/ether.h>
+#include <netinet/in.h>
+#include <netinet/ip.h>
 #include <time.h>
 #include <pcap.h>
+#include <arpa/inet.h>
+
+
 
 #define MAX_ETH_FRAME_LEN xxx  // maximum Ethernet frame length
 
+void printOther(pcap_t * p) {
+
+	struct pcap_pkthdr * hdr = (struct pcap_pkthdr *) p;
+	struct timeval t = hdr->ts;
+	time_t tv = (time_t) t.tv_sec;
+
+	printf("==== packet count ====\n");
+	printf("captured time %s\n", ctime(&tv));
+	printf("bytes captured %d\n", ntohs(hdr->len));
+	printf("length of packet %d\n",ntohs(hdr->len));
+	printf("Ethernet type 0x%02X not IP, not processed.\n\n", ntohs( ((struct ether_header *) p)->ether_type));
+
+}
+
+void printEthernet(const u_char* packet) {
+
+	struct iphdr * hdr = (struct iphdr *) packet;
+	struct ip * p = (struct ip *) packet;
+
+	struct ether_header * eptr = (struct ether_header *) packet;
+
+
+	printf("==== packet count ====\n");
+	//printf("captured time %s\n", ctime(&tv));
+	printf("bytes captured %d\n", ntohs(p->ip_len));
+	printf("length of packet %d\n",ntohs(p->ip_len));
+	printf("IP packet length %d\n", ntohs(p->ip_len));
+
+	printf("dst addr = %s\n", ether_ntoa((const struct ether_addr *) &eptr->ether_dhost));
+	printf("src addr = %s\n", ether_ntoa((const struct ether_addr *) &eptr->ether_shost));
+
+	printf("type = 0x%02X\n", ntohs( ((struct ether_header *) packet) -> ether_type) );
+
+	printf("src IP addr = %s\n", inet_ntoa(p->ip_src));
+	printf("dest IP addr = %s\n", inet_ntoa(p->ip_dst));
+
+	printf("\n");
+
+}
+
+void processPacket(u_char *args, const struct pcap_pkthdr* pkthdr, const u_char* packet) {
+
+	u_int16_t type = ntohs( ((struct ether_header *) packet)->ether_type);
+
+	if(type == ETHERTYPE_IP) {
+		printEthernet(packet);
+	} else {
+		printOther((pcap_t *) packet);
+	}	
+	// else if(type == ETHERTYPE_ARP) {
+
+	//}else if(type == ETHERTYPE_REVARP) {
+
+	//}
+
+}
+
 int main(int argc, char* argv[]){
-	
+
 	if(argc < 1) {
 		printf("Improper usage: %s [ packet capture ]\n", argv[0]);
 		exit(1);
@@ -48,22 +110,17 @@ int main(int argc, char* argv[]){
 	/*
 	 * while there are tuples to read
 	 *     read one frame header
- 	 *     read corresponding frame
+	 *     read corresponding frame
 	 *     extract Ethernet addresses, IP addresses and protocol type
 	 *     print information extracted
 	 * end-while
 	 *
 	 */
 
-	struct pcap_pkthdr *hdr;
-	const u_char *data;
+	u_char* args = NULL;
 
-	int i = 0;
+	pcap_loop(p, 1000, processPacket, args);
 
-	while(pcap_next_ex(p, &hdr, &data) == 1) {
-	printf("packet %d\n", i);
-	i++;
-	}	
 	pcap_close(p);
 	return 1;
 }

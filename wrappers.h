@@ -25,7 +25,7 @@ extern void Writen(int fd, void *ptr, size_t nbytes);
 
 extern int Connect(int sockfd, const struct sockaddr *serv_addr, socklen_t addrlen);
 
-extern int Getaddrinfo(const char *node, const char *service, const struct addrinfo *hints, struct addrinfo **res);
+extern int Getaddrinfo(const char *node, const char *service, const struct addrinfo * hints, struct addrinfo **res);
 
 extern int Close(int fd);
 
