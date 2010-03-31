@@ -15,6 +15,7 @@
 #include <unistd.h>
 #include <sys/socket.h>
 #include <net/if.h>
+#include <net/if_arp.h>
 #include <netinet/if_ether.h>
 #include <netinet/ether.h>
 #include <netinet/in.h>
@@ -22,20 +23,40 @@
 #include <time.h>
 #include <pcap.h>
 #include <arpa/inet.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <netinet/udp.h>
 
 #define MAX_ETH_FRAME_LEN xxx  // maximum Ethernet frame length
 int count = 0;
-void printARP(const u_char *p) {
 
-	struct arphdr * hdr = (struct arphdr *) (p + 0);
+
+void printUDPHeader(struct udphdr * hdr) {
+
+	printf("Source port %d\n", ntohs(hdr->source));
+	printf("Dest port %d\n", ntohs(hdr->dest));
+	printf("Length of packet %d\n",ntohs(hdr->len));
+}
+
+
+void printTCPHeader( struct tcphdr * hdr) {
+
+	printf("Source port %d\n", hdr->source);
+	printf("Dest port %d\n", hdr->dest);
+	printf("Seq num %d\n", hdr->seq);
+	printf("Ack num %d\n", hdr->ack_seq);
+}
+
+void printARP(struct arphdr * hdr) {
+
 	unsigned short int op = hdr->ar_op;
-	
-	if( op == ARPOP_REQUEST)
-		printf("ARP request\n");
+	op = ntohs(op);
+	if(op == ARPOP_REQUEST)
+		printf("ARP request (%d)\n", op);
 	else if(op == ARPOP_REPLY)
-		printf("ARP reply\n");
+		printf("ARP reply (%d)\n", op);
 	else {
-		printf("ARP Unknown\n");
+		printf("ARP Unknown (%d)\n", op);
 	}
 }
 
@@ -44,21 +65,36 @@ void printEthernetHeader(struct ether_header * eptr) {
 	printf("src addr = %s\n", ether_ntoa((const struct ether_addr *) &eptr->ether_shost));
 }
 
-void printEthernetBody(struct ip * p) {
-	printf("IP packet length %d\n", p->ip_len);
-	printf("src IP addr = %s\n", inet_ntoa(p->ip_src));
-	printf("dest IP addr = %s\n", inet_ntoa(p->ip_dst));
+void printIPHeader(struct iphdr * p) {
+	
+	struct ip * hdr = (struct ip *) p;
+	
+	printf("IP packet length %d\n", p->tot_len);
+	printf("src IP addr = %s\n", inet_ntoa(hdr->ip_src));
+	printf("dest IP addr = %s\n", inet_ntoa(hdr->ip_dst));
 }
 
-void printEthernet(const u_char * packet) {
-	printEthernetHeader((struct ether_header *) (packet + 0));
-	printEthernetBody((struct ip*) (packet + sizeof(struct ether_header)));
+void processIP(struct iphdr *hdr) {
+
+	printf("Processing IP\n");
+	
+	int type = hdr->protocol;
+	int soIPHeader = sizeof(struct iphdr);
+
+	switch(type) {
+
+		case IPPROTO_TCP: printTCPHeader((struct tcphdr *) (hdr + soIPHeader));break;
+		case IPPROTO_UDP: printUDPHeader((struct udphdr *) (hdr + soIPHeader));break;
+		default: printf("Default Case\n");printIPHeader(hdr); break;
+	}
 }
 
 void processPacket(u_char *args, const struct pcap_pkthdr* pkthdr, const u_char* packet) {
 
 	u_int16_t type = ntohs( ((struct ether_header *) packet)->ether_type);
 	
+	int soMACHeader = sizeof(struct ether_header);	
+
 	printf("==== packet count %d ====\n", count);
 	time_t tv = (pkthdr->ts).tv_sec;
 	printf("captured time %s", ctime(&tv));
@@ -66,16 +102,20 @@ void processPacket(u_char *args, const struct pcap_pkthdr* pkthdr, const u_char*
 	printf("length of packet %d\n",pkthdr->len);
 	printf("type = 0x%02X\n", type);
 
+	printEthernetHeader((struct ether_header *) packet);
+
 	if(type == ETHERTYPE_IP) {
-		printEthernet(packet);
+		processIP((struct iphdr *)(packet + soMACHeader));
 	}		
 	 else if(type == ETHERTYPE_ARP) {
-		printARP(packet);	  
+		printARP((struct arphdr *) (packet + soMACHeader));	  
 	}else if(type == ETHERTYPE_REVARP) {
 	  printf("REARP Packet\n");
 	}else {
 		printf("Ethernet type 0x%02X not IP, not processed.\n\n", type);
 	}
+
+
 	count++;
 	printf("\n");
 }
@@ -85,6 +125,12 @@ int main(int argc, char* argv[]){
 	if(argc < 1) {
 		printf("Improper usage: %s [ packet capture ]\n", argv[0]);
 		exit(1);
+	}
+	
+	int numPackets = 0;
+
+	if(argc == 3) {
+		numPackets = atoi(argv[2]);
 	}
 
 	pcap_t *p;
@@ -99,7 +145,7 @@ int main(int argc, char* argv[]){
 	printf("maximum captured packet length %d\n", pcap_snapshot(p));
 	printf("link layer type %d\n\n", pcap_datalink(p));
 
-	pcap_loop(p, 1000, processPacket, NULL);
+	pcap_loop(p, numPackets, processPacket, NULL);
 
 	pcap_close(p);
 	return 1;
