@@ -32,7 +32,7 @@ int count = 0;
 
 
 void printUDPHeader(struct udphdr * hdr) {
-
+	printf("-==UDP Header==-\n");
 	printf("Source port %d\n", ntohs(hdr->source));
 	printf("Dest port %d\n", ntohs(hdr->dest));
 	printf("Length of packet %d\n",ntohs(hdr->len));
@@ -40,7 +40,7 @@ void printUDPHeader(struct udphdr * hdr) {
 
 
 void printTCPHeader( struct tcphdr * hdr) {
-
+	printf("-==TCP Header==-\n");
 	printf("Source port %d\n", hdr->source);
 	printf("Dest port %d\n", hdr->dest);
 	printf("Seq num %d\n", hdr->seq);
@@ -60,18 +60,30 @@ void printARP(struct arphdr * hdr) {
 	}
 }
 
-void printEthernetHeader(struct ether_header * eptr) {
+int printEthernetHeader(struct ether_header * eptr) {
+	int type = ntohs(eptr->ether_type);
+	printf("-==MAC Header==-\n");
+	printf("type = 0x%02X\n", type);
 	printf("dst addr = %s\n", ether_ntoa((const struct ether_addr *) &eptr->ether_dhost));
 	printf("src addr = %s\n", ether_ntoa((const struct ether_addr *) &eptr->ether_shost));
+	return type;
 }
 
 void printIPHeader(struct iphdr * p) {
 	
 	struct ip * hdr = (struct ip *) p;
 	
+	printf("-==IP Header==-\n");
 	printf("IP packet length %d\n", p->tot_len);
 	printf("src IP addr = %s\n", inet_ntoa(hdr->ip_src));
 	printf("dest IP addr = %s\n", inet_ntoa(hdr->ip_dst));
+}
+
+void printPcapHeader(const struct pcap_pkthdr * pkthdr) {
+	time_t tv = (pkthdr->ts).tv_sec;
+	printf("-==Pcap Header==-\n");
+	printf("captured time %s", ctime(&tv));
+	printf("bytes captured %d\n", pkthdr->len);
 }
 
 void processIP(struct iphdr *hdr) {
@@ -90,19 +102,14 @@ void processIP(struct iphdr *hdr) {
 }
 
 void processPacket(u_char *args, const struct pcap_pkthdr* pkthdr, const u_char* packet) {
-
-	u_int16_t type = ntohs( ((struct ether_header *) packet)->ether_type);
+	
+	printf("==== packet count %d ====\n", count);
 	
 	int soMACHeader = sizeof(struct ether_header);	
+	
+	printPcapHeader(pkthdr);
 
-	printf("==== packet count %d ====\n", count);
-	time_t tv = (pkthdr->ts).tv_sec;
-	printf("captured time %s", ctime(&tv));
-	printf("bytes captured %d\n", pkthdr->len);
-	printf("length of packet %d\n",pkthdr->len);
-	printf("type = 0x%02X\n", type);
-
-	printEthernetHeader((struct ether_header *) packet);
+	int type = printEthernetHeader((struct ether_header *) packet);
 
 	if(type == ETHERTYPE_IP) {
 		processIP((struct iphdr *)(packet + soMACHeader));
